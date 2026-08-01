@@ -1,8 +1,8 @@
 # warp-docker
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/caomingjun/warp)](https://hub.docker.com/r/caomingjun/warp)
-![WARP version in latest image](https://img.shields.io/endpoint?url=https%3A%2F%2Fapi.caomingjun.com%2Fdockerhub-label%3Frepo%3Dcaomingjun%2Fwarp%26label%3DWARP_VERSION%26display%3DWARP%2520in%2520image)
-![GOST version in latest image](https://img.shields.io/endpoint?url=https%3A%2F%2Fapi.caomingjun.com%2Fdockerhub-label%3Frepo%3Dcaomingjun%2Fwarp%26label%3DGOST_VERSION%26display%3DGOST%2520in%2520image)
+![WARP version in latest image](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fcmj2002%2F3be8f0c02363f9e98dd3048b5174765a%2Fraw%2Fwarp-version-badge.json)
+![GOST version in latest image](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Fcmj2002%2F3be8f0c02363f9e98dd3048b5174765a%2Fraw%2Fgost-version-badge.json)
 
 Run official [Cloudflare WARP](https://1.1.1.1/) client in Docker.
 

@@ -87,3 +87,25 @@ jobs:
             ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:slim-latest
             ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:slim-${{ steps.get-warp-client-version.outputs.WARP_VERSION }}-${{ steps.get-gost-version.outputs.GOST_VERSION }}
             ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:slim-${{ steps.get-warp-client-version.outputs.WARP_VERSION }}-${{ steps.get-gost-version.outputs.GOST_VERSION }}-${{ github.sha }}
+
+      - name: Update WARP version badge
+        if: github.repository == 'cmj2002/warp-docker'
+        uses: Schneegans/dynamic-badges-action@v1.9.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 3be8f0c02363f9e98dd3048b5174765a
+          filename: warp-version-badge.json
+          label: WARP in image
+          message: ${{ steps.get-warp-client-version.outputs.WARP_VERSION }}
+          color: blue
+
+      - name: Update GOST version badge
+        if: github.repository == 'cmj2002/warp-docker'
+        uses: Schneegans/dynamic-badges-action@v1.9.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: 3be8f0c02363f9e98dd3048b5174765a
+          filename: gost-version-badge.json
+          label: GOST in image
+          message: ${{ steps.get-gost-version.outputs.GOST_VERSION }}
+          color: blue
