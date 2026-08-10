@@ -1,11 +1,32 @@
-ARG BASE_IMAGE=ubuntu:22.04
+ARG BASE_IMAGE=debian:trixie-slim
+
+# download and extract the GOST binary in a separate stage
+FROM alpine:3.24 AS gost-builder
+
+ARG GOST_VERSION=3.2.6
+ARG TARGETPLATFORM
+
+RUN set -eux; \
+    \
+    case ${TARGETPLATFORM} in \
+      "linux/amd64")   ARCH="amd64" ;; \
+      "linux/arm64")   ARCH="arm64" ;; \
+      *) echo "Unsupported TARGETPLATFORM: ${TARGETPLATFORM}" && exit 1 ;; \
+    esac; \
+    \
+    test -n "${GOST_VERSION}"; \
+    apk add --no-cache curl tar; \
+    mkdir -p /out; \
+    curl -fSL -o /tmp/gost.tar.gz \
+      "https://github.com/go-gost/gost/releases/download/v${GOST_VERSION}/gost_${GOST_VERSION}_linux_${ARCH}.tar.gz"; \
+    tar -xzf /tmp/gost.tar.gz -C /out gost; \
+    chmod +x /out/gost
 
 FROM ${BASE_IMAGE}
 
 ARG WARP_VERSION
 ARG GOST_VERSION
 ARG COMMIT_SHA
-ARG TARGETPLATFORM
 
 LABEL org.opencontainers.image.authors="cmj2002"
 LABEL org.opencontainers.image.url="https://github.com/cmj2002/warp-docker"
@@ -15,48 +36,37 @@ LABEL COMMIT_SHA=${COMMIT_SHA}
 
 COPY entrypoint.sh /entrypoint.sh
 COPY ./healthcheck /healthcheck
+COPY --from=gost-builder /out/gost /usr/bin/gost
 
-# install dependencies
-RUN case ${TARGETPLATFORM} in \
-      "linux/amd64")   export ARCH="amd64" ;; \
-      "linux/arm64")   export ARCH="armv8" ;; \
-      *) echo "Unsupported TARGETPLATFORM: ${TARGETPLATFORM}" && exit 1 ;; \
-    esac && \
-    echo "Building for ${TARGETPLATFORM} with GOST ${GOST_VERSION}" &&\
-    apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y curl gnupg lsb-release sudo jq ipcalc && \
-    curl https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | tee /etc/apt/sources.list.d/cloudflare-client.list && \
-    apt-get update && \
-    apt-get install -y cloudflare-warp && \
-    apt-get clean && \
-    apt-get autoremove -y && \
-    MAJOR_VERSION=$(echo ${GOST_VERSION} | cut -d. -f1) && \
-    MINOR_VERSION=$(echo ${GOST_VERSION} | cut -d. -f2) && \
-    # detect if version >= 2.12.0, which uses new filename syntax
-    if [ "${MAJOR_VERSION}" -ge 3 ] || [ "${MAJOR_VERSION}" -eq 2 -a "${MINOR_VERSION}" -ge 12 ]; then \
-      NAME_SYNTAX="new" && \
-      if [ "${TARGETPLATFORM}" = "linux/arm64" ]; then \
-        ARCH="arm64"; \
-      fi && \
-      FILE_NAME="gost_${GOST_VERSION}_linux_${ARCH}.tar.gz"; \
-    else \
-      NAME_SYNTAX="legacy" && \
-      FILE_NAME="gost-linux-${ARCH}-${GOST_VERSION}.gz"; \
-    fi && \
-    echo "File name: ${FILE_NAME}" && \
-    curl -LO https://github.com/ginuerzh/gost/releases/download/v${GOST_VERSION}/${FILE_NAME} && \
-    if [ "${NAME_SYNTAX}" = "new" ]; then \
-      tar -xzf ${FILE_NAME} -C /usr/bin/ gost; \
-    else \
-      gunzip ${FILE_NAME} && \
-      mv gost-linux-${ARCH}-${GOST_VERSION} /usr/bin/gost; \
-    fi && \
-    chmod +x /usr/bin/gost && \
-    chmod +x /entrypoint.sh && \
-    chmod +x /healthcheck/index.sh && \
-    useradd -m -s /bin/bash warp && \
+# install the WARP client and runtime dependencies
+RUN set -eux; \
+    \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl dbus gnupg sudo jq ipcalc; \
+    curl -fsSL https://pkg.cloudflareclient.com/pubkey.gpg | gpg --yes --dearmor \
+      --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg; \
+    . /etc/os-release; \
+    echo "deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ ${VERSION_CODENAME} main" \
+      > /etc/apt/sources.list.d/cloudflare-client.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends cloudflare-warp; \
+    \
+    # warp-svc does not use the GUI packages below (they are only needed by
+    # the graphical WARP client). Drop them from the header of the installed
+    # package first so that apt agrees to purge them, saving ~400MB.
+    sed -i 's/, libwebkit2gtk-4.1-0//; s/, libayatana-appindicator3-1//; s/, desktop-file-utils//' /var/lib/dpkg/status; \
+    apt-get purge -y --allow-change-held-packages \
+      libwebkit2gtk-4.1-0 \
+      libayatana-appindicator3-1 \
+      desktop-file-utils \
+      libgtk-3-0 \
+      libgtk-3-common; \
+    apt-get autoremove -y; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*; \
+    \
+    chmod +x /entrypoint.sh /healthcheck/index.sh; \
+    useradd -m -s /bin/bash warp; \
     echo "warp ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/warp
 
 USER warp

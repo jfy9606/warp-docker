@@ -1,8 +1,20 @@
 version: "3"
 
+# Before first use, build the image from this repository:
+#
+#   docker build --build-arg GOST_VERSION=3.2.6 -t warp-docker:latest .
+#
+# The upstream image caomingjun/warp does not contain the modifications
+# made in this repository (MASQUE by default, GOST v3, Debian base).
+
 services:
   warp:
-    image: caomingjun/warp
+    # build your own image from this repository instead of pulling the upstream
+    # image, which does not contain the modifications made in this repository
+    # (MASQUE by default, GOST v3, Debian-based slim image, etc.):
+    #
+    #   docker build --build-arg GOST_VERSION=3.2.6 -t warp-docker:latest .
+    image: warp-docker:latest
     container_name: warp
     restart: always
     # add removed rule back (https://github.com/opencontainers/runc/pull/3468)

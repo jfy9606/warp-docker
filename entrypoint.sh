@@ -48,6 +48,13 @@ else
     warp-cli --accept-tos debug qlog enable
 fi
 
+# use MASQUE as the default tunnel protocol, which is less likely to be blocked by firewalls
+# than the traditional WireGuard protocol.
+# The failure is tolerated because the protocol may be enforced by the
+# organization via mdm.xml / Zero Trust policies.
+warp-cli --accept-tos tunnel protocol set MASQUE \
+    || echo "[WARN] Failed to set tunnel protocol to MASQUE, skipped."
+
 # if WARP_ENABLE_NAT is provided, enable NAT and forwarding
 if [ -n "$WARP_ENABLE_NAT" ]; then
     # switch to warp mode
