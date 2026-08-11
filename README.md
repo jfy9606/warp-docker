@@ -27,13 +27,21 @@ docker build --build-arg GOST_VERSION=3.2.6 -t warp-docker:latest .
 
 ### Start the container
 
-Write the following content to `docker-compose.yml` and run `docker-compose up -d`:
+The repository ships a ready-to-use `docker-compose.yml` which builds the image locally. Just run:
+
+```bash
+docker compose up -d --build
+```
+
+The equivalent `docker-compose.yml` is:
 
 ```yaml
-version: "3"
-
 services:
   warp:
+    build:
+      context: .
+      args:
+        GOST_VERSION: 3.2.6
     image: warp-docker:latest
     container_name: warp
     restart: always

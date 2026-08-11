@@ -1,19 +1,17 @@
-version: "3"
-
-# Before first use, build the image from this repository:
+# The upstream image caomingjun/warp does not contain the modifications made
+# in this repository (MASQUE by default, GOST v3, Debian base, etc.), so the
+# image is built locally from the Dockerfile:
 #
-#   docker build --build-arg GOST_VERSION=3.2.6 -t warp-docker:latest .
+#   docker compose up -d --build
 #
-# The upstream image caomingjun/warp does not contain the modifications
-# made in this repository (MASQUE by default, GOST v3, Debian base).
+# To use a different GOST version, change GOST_VERSION below.
 
 services:
   warp:
-    # build your own image from this repository instead of pulling the upstream
-    # image, which does not contain the modifications made in this repository
-    # (MASQUE by default, GOST v3, Debian-based slim image, etc.):
-    #
-    #   docker build --build-arg GOST_VERSION=3.2.6 -t warp-docker:latest .
+    build:
+      context: .
+      args:
+        GOST_VERSION: 3.2.6
     image: warp-docker:latest
     container_name: warp
     restart: always
