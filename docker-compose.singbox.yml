@@ -1,0 +1,40 @@
+# sing-box multi-IP mode: one container, N SOCKS5 ports, each backed by its
+# own WARP registration (independent egress IP).
+#
+#   cp env.example .env        # adjust SINGBOX_PORTS etc. (see env.example)
+#   docker compose -f docker-compose.singbox.yml up -d --build
+#
+# Check each exit:
+#   curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
+#   curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
+#
+# All parameters come from .env (docker compose interpolates it
+# automatically). The port range SINGBOX_PORTS is the single knob: it is
+# used both for the host port mapping here and passed to the container,
+# which derives the tunnel count from it. See env.example for every option.
+#
+# Note: unlike the main docker-compose.yml, no NET_ADMIN / TUN / sysctls /
+# device_cgroup_rules are required (sing-box runs WireGuard in userspace).
+
+services:
+  singbox:
+    build:
+      context: .
+      dockerfile: singbox/Dockerfile
+      args:
+        SING_BOX_VERSION: ${SING_BOX_VERSION:-1.13.18}
+    image: ${SINGBOX_IMAGE:-warp-singbox:latest}
+    container_name: ${SINGBOX_CONTAINER_NAME:-warp-singbox}
+    restart: ${SINGBOX_RESTART:-always}
+    ports:
+      - "${SINGBOX_PORTS:-1080-1081}:${SINGBOX_PORTS:-1080-1081}"
+    environment:
+      - SINGBOX_PORTS=${SINGBOX_PORTS:-1080-1081}
+      - WARP_SLEEP=${WARP_SLEEP:-2}
+      # optional; WARP+ accounts allow max 5 devices
+      - WARP_LICENSE_KEY=${WARP_LICENSE_KEY:-}
+      # re-register all tunnels + hot reload; GNU sleep duration (e.g. 6h)
+      - WARP_IP_ROTATE_INTERVAL=${WARP_IP_ROTATE_INTERVAL:-}
+    volumes:
+      # persistence: tunnel identities (and their IPs) survive restarts
+      - ${SINGBOX_DATA_DIR:-./data-singbox}:/var/lib/singbox-warp

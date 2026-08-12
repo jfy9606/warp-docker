@@ -35,6 +35,7 @@ LABEL GOST_VERSION=${GOST_VERSION}
 LABEL COMMIT_SHA=${COMMIT_SHA}
 
 COPY entrypoint.sh /entrypoint.sh
+COPY rotate-ip.sh /rotate-ip.sh
 COPY ./healthcheck /healthcheck
 COPY --from=gost-builder /out/gost /usr/bin/gost
 
@@ -65,7 +66,7 @@ RUN set -eux; \
     apt-get clean; \
     rm -rf /var/lib/apt/lists/*; \
     \
-    chmod +x /entrypoint.sh /healthcheck/index.sh; \
+    chmod +x /entrypoint.sh /rotate-ip.sh /healthcheck/index.sh; \
     useradd -m -s /bin/bash warp; \
     echo "warp ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/warp
 
@@ -81,6 +82,7 @@ ENV REGISTER_WHEN_MDM_EXISTS=
 ENV WARP_LICENSE_KEY=
 ENV BETA_FIX_HOST_CONNECTIVITY=
 ENV WARP_ENABLE_NAT=
+ENV WARP_IP_ROTATE_INTERVAL=
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
   CMD /healthcheck/index.sh

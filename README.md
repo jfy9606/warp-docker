@@ -103,6 +103,7 @@ You can configure the container through the following environment variables:
 - `REGISTER_WHEN_MDM_EXISTS`: If set, will register consumer account (WARP or WARP+, in contrast to Zero Trust) even when `mdm.xml` exists. You usually don't need this, as `mdm.xml` are usually used for Zero Trust. However, some users may want to adjust advanced settings in `mdm.xml` while still using consumer account.
 - `BETA_FIX_HOST_CONNECTIVITY`: If set, will add checks for host connectivity into healthchecks and automatically fix it if necessary. See [host connectivity issue](docs/host-connectivity.md) for more information.
 - `WARP_ENABLE_NAT`: If set, will work as warp mode and turn NAT on. You can route L3 traffic through `warp-docker` to Warp. See [nat gateway](docs/nat-gateway.md) for more information.
+- `WARP_IP_ROTATE_INTERVAL`: If set, the container will periodically force a new WARP IP by re-registering the client. The value is passed to GNU `sleep`, so it can be a number of seconds (e.g. `3600`) or a duration like `30m` / `6h`. Traffic through the proxy is briefly interrupted at each rotation. See [IP rotation](docs/ip-rotation.md) for more information and caveats.
 
 > [!NOTE]
 > The tunnel protocol is set to MASQUE by default at startup. The failure of
@@ -111,6 +112,32 @@ You can configure the container through the following environment variables:
 > for more details.
 
 Data persistence: Use the host volume `./data` to persist the data of the WARP client. You can change the location of this directory or use other types of volumes. If you modify the `WARP_LICENSE_KEY`, please delete the `./data` directory so that the client can detect and register again.
+
+### Rotate the WARP IP periodically
+
+To get a fresh WARP IP on a schedule, set `WARP_IP_ROTATE_INTERVAL` in the `docker-compose.yml`:
+
+```yaml
+environment:
+  - WARP_IP_ROTATE_INTERVAL=6h
+```
+
+Every interval, the container deletes its registration, registers a new identity (which always gets a new IP) and reconnects. The proxy keeps listening during the rotation, but traffic is briefly interrupted while the tunnel reconnects. See [IP rotation](docs/ip-rotation.md) for caveats (WARP+ device limit, Zero Trust).
+
+### Alternative: sing-box multi-IP mode (N exits, one container)
+
+This repository also ships a **separate, optional mode** that replaces the official client with [sing-box](https://sing-box.sagernet.org/): one container runs N independent WARP tunnels, each exposed as its own SOCKS5 port (N independent egress IPs), with IP rotation done by re-registering and hot-reloading via `SIGHUP` — no TUN device or `NET_ADMIN` needed.
+
+All parameters come from a `.env` file — no need to edit the compose file:
+
+```bash
+cp env.example .env      # adjust SINGBOX_PORTS, WARP_IP_ROTATE_INTERVAL, ...
+docker compose -f docker-compose.singbox.yml up -d --build
+curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
+curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
+```
+
+`SINGBOX_PORTS` is the single knob controlling the exits: `1080-1081` runs 2 tunnels, `1080-1082` runs 3, etc. See [env.example](env.example) for every option and [sing-box multi-IP mode](docs/singbox-multi-ip.md) for details and caveats.
 
 For advanced usage or configurations, see [documentation](docs/README.md).
 

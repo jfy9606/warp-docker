@@ -82,5 +82,17 @@ if [ -n "$WARP_ENABLE_NAT" ]; then
     sudo nft add rule ip6 mangle forward tcp flags syn tcp option maxseg size set rt mtu
 fi
 
+# if WARP_IP_ROTATE_INTERVAL is provided, start the IP rotation loop in the background
+if [ -n "$WARP_IP_ROTATE_INTERVAL" ]; then
+    echo "[IP Rotation] WARP IP rotation enabled, rotating every $WARP_IP_ROTATE_INTERVAL."
+    (
+        while true; do
+            sleep "$WARP_IP_ROTATE_INTERVAL"
+            /rotate-ip.sh \
+                || echo "[IP Rotation] Rotation failed, will retry in the next cycle."
+        done
+    ) &
+fi
+
 # start the proxy
 gost $GOST_ARGS
