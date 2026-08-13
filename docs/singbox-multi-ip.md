@@ -124,6 +124,6 @@ With docker compose, put these in `.env` (see `env.example`). With plain `docker
 
 ### Caveats
 
-- **Registration rate limits**: every rotation creates one new device per tunnel; keep intervals above a few minutes. Old devices are left on Cloudflare's side and show up in the 1.1.1.1 app.
+- **Registration rate limits**: every rotation creates one new device per tunnel; keep intervals long (hours). `rotate.sh` now deletes the replaced device from Cloudflare's side (`DELETE /reg/{id}`), so identities no longer pile up — but devices registered before this fix, or with older versions, still need manual cleanup in the 1.1.1.1 app.
 - **No MASQUE / no Zero Trust**: use the main image if you need either.
 - **UDP 2408** must be reachable from the container to `engage.cloudflareclient.com`.

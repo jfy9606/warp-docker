@@ -1,5 +1,6 @@
 data/
 data-singbox/
+data-xray/
 
 # local compose configuration
 .env

@@ -20,9 +20,13 @@ log "rotating all $TUNNELS tunnel(s) ..."
 for ((i = 0; i < TUNNELS; i++)); do
     state="$DATA_DIR/tunnel-$i.json"
     old_id=$(jq -r '.device_id // "?"' "$state" 2>/dev/null || echo "?")
+    old_tok=$(jq -r '.access_token // ""' "$state" 2>/dev/null || echo "")
     if register_tunnel "$i"; then
         new_id=$(jq -r '.device_id' "$state")
         log "tunnel $i: $old_id -> $new_id"
+        # delete the replaced device on Cloudflare's side so old identities
+        # don't pile up (quota + rate-limiting). Non-fatal on failure.
+        delete_device "$old_id" "$old_tok"
     else
         log "[WARN] tunnel $i rotation failed, keeping the old config and skipping reload"
         exit 1

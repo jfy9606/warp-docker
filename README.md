@@ -124,20 +124,26 @@ environment:
 
 Every interval, the container deletes its registration, registers a new identity (which always gets a new IP) and reconnects. The proxy keeps listening during the rotation, but traffic is briefly interrupted while the tunnel reconnects. See [IP rotation](docs/ip-rotation.md) for caveats (WARP+ device limit, Zero Trust).
 
-### Alternative: sing-box multi-IP mode (N exits, one container)
+### Alternative: sing-box / xray multi-IP mode (N exits, one container)
 
-This repository also ships a **separate, optional mode** that replaces the official client with [sing-box](https://sing-box.sagernet.org/): one container runs N independent WARP tunnels, each exposed as its own SOCKS5 port (N independent egress IPs), with IP rotation done by re-registering and hot-reloading via `SIGHUP` — no TUN device or `NET_ADMIN` needed.
+This repository also ships **two separate, optional modes** that replace the official client with [sing-box](https://sing-box.sagernet.org/) or [Xray-core](https://github.com/XTLS/Xray-core): one container runs N independent WARP tunnels, each exposed as its own SOCKS5 port (N independent egress IPs), with IP rotation done by re-registering — no TUN device or `NET_ADMIN` needed (both run WireGuard in userspace).
 
-All parameters come from a `.env` file — no need to edit the compose file:
+- **sing-box mode** (`docker-compose.singbox.yml`): lighter binary and RAM, rotation hot-reloads via `SIGHUP` (no process restart). See [sing-box multi-IP mode](docs/singbox-multi-ip.md).
+- **xray mode** (`docker-compose.xray.yml`): slightly heavier, but ships device cleanup on Cloudflare's side at rotation and official-client MTU/keepalive. See [xray multi-IP mode](docs/xray-multi-ip.md).
+
+Both are driven by the same `.env` file — no need to edit the compose file:
 
 ```bash
-cp env.example .env      # adjust SINGBOX_PORTS, WARP_IP_ROTATE_INTERVAL, ...
-docker compose -f docker-compose.singbox.yml up -d --build
+cp env.example .env          # adjust SINGBOX_PORTS / XRAY_PORTS, ...
+docker compose -f docker-compose.singbox.yml up -d --build   # or: -f docker-compose.xray.yml
 curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
 curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
 ```
 
-`SINGBOX_PORTS` is the single knob controlling the exits: `1080-1081` runs 2 tunnels, `1080-1082` runs 3, etc. See [env.example](env.example) for every option and [sing-box multi-IP mode](docs/singbox-multi-ip.md) for details and caveats.
+`SINGBOX_PORTS` / `XRAY_PORTS` is the single knob per mode controlling the exits: `1080-1081` runs 2 tunnels, `1080-1082` runs 3, etc. See [env.example](env.example) for every option and the mode docs for details and caveats.
+
+> [!WARNING]
+> Both multi-IP modes are **experimental**: Cloudflare restricts API-registered WireGuard devices, so sessions can degrade or drop within minutes. The official-client mode (main `docker-compose.yml`) is the reliable path for production traffic.
 
 For advanced usage or configurations, see [documentation](docs/README.md).
 

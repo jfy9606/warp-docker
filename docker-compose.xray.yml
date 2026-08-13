@@ -1,0 +1,41 @@
+# xray multi-IP mode: one container, N SOCKS5 ports, each backed by its
+# own WARP registration (independent egress IP).
+#
+#   cp env.example .env        # adjust XRAY_PORTS etc. (see env.example)
+#   docker compose -f docker-compose.xray.yml up -d --build
+#
+# Check each exit:
+#   curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
+#   curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
+#
+# All parameters come from .env (docker compose interpolates it
+# automatically). The port range XRAY_PORTS is the single knob: it is
+# used both for the host port mapping here and passed to the container,
+# which derives the tunnel count from it. See env.example for every option.
+#
+# Note: unlike the main docker-compose.yml, no NET_ADMIN / TUN / sysctls /
+# device_cgroup_rules are required (xray runs WireGuard in userspace via
+# gVisor with noKernelTun).
+
+services:
+  xray:
+    build:
+      context: .
+      dockerfile: xray/Dockerfile
+      args:
+        XRAY_VERSION: ${XRAY_VERSION:-26.3.27}
+    image: ${XRAY_IMAGE:-warp-xray:latest}
+    container_name: ${XRAY_CONTAINER_NAME:-warp-xray}
+    restart: ${XRAY_RESTART:-always}
+    ports:
+      - "${XRAY_PORTS:-1080-1081}:${XRAY_PORTS:-1080-1081}"
+    environment:
+      - XRAY_PORTS=${XRAY_PORTS:-1080-1081}
+      - WARP_SLEEP=${WARP_SLEEP:-2}
+      # optional; WARP+ accounts allow max 5 devices
+      - WARP_LICENSE_KEY=${WARP_LICENSE_KEY:-}
+      # re-register all tunnels + restart xray; GNU sleep duration (e.g. 6h)
+      - WARP_IP_ROTATE_INTERVAL=${WARP_IP_ROTATE_INTERVAL:-}
+    volumes:
+      # persistence: tunnel identities (and their IPs) survive restarts
+      - ${XRAY_DATA_DIR:-./data-xray}:/var/lib/xray-warp
