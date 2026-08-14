@@ -9,9 +9,10 @@
 #   curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
 #
 # All parameters come from .env (docker compose interpolates it
-# automatically). The port range SINGBOX_PORTS is the single knob: it is
-# used both for the host port mapping here and passed to the container,
-# which derives the tunnel count from it. See env.example for every option.
+# automatically). The port range SINGBOX_PORTS is the single knob: the
+# container runs in host network mode, so its SOCKS5 listeners bind the
+# given ports directly on the host (no port mapping), and it derives the
+# tunnel count from the range. See env.example for every option.
 #
 # Note: unlike the main docker-compose.yml, no NET_ADMIN / TUN / sysctls /
 # device_cgroup_rules are required (sing-box runs WireGuard in userspace).
@@ -26,8 +27,9 @@ services:
     image: ${SINGBOX_IMAGE:-warp-singbox:latest}
     container_name: ${SINGBOX_CONTAINER_NAME:-warp-singbox}
     restart: ${SINGBOX_RESTART:-always}
-    ports:
-      - "${SINGBOX_PORTS:-1080-1081}:${SINGBOX_PORTS:-1080-1081}"
+    # host network mode: SOCKS5 listeners bind directly to the host, so
+    # SINGBOX_PORTS must be free on the host and no port mapping is needed
+    network_mode: host
     environment:
       - SINGBOX_PORTS=${SINGBOX_PORTS:-1080-1081}
       - WARP_SLEEP=${WARP_SLEEP:-2}

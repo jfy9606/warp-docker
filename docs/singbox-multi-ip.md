@@ -54,7 +54,7 @@ for p in $(seq 1080 1082); do
 done
 ```
 
-Each port shows its own IP (and usually a different `colo`). **`SINGBOX_PORTS` is the single knob**: the port range is used both for the host port mapping and inside the container, which derives the tunnel count from it (`1080-1082` → 3 tunnels). Set `WARP_IP_ROTATE_INTERVAL`, `WARP_LICENSE_KEY` and `WARP_SLEEP` in the same `.env`; see `env.example` for the full list. Changing `SINGBOX_PORTS` later only requires editing `.env` and `docker compose ... up -d` again.
+Each port shows its own IP (and usually a different `colo`). **`SINGBOX_PORTS` is the single knob**: the compose file runs the container in **host network mode**, so it listens directly on those host ports (no port mapping) and derives the tunnel count from the range (`1080-1082` → 3 tunnels). Set `WARP_IP_ROTATE_INTERVAL`, `WARP_LICENSE_KEY` and `WARP_SLEEP` in the same `.env`; see `env.example` for the full list. Changing `SINGBOX_PORTS` later only requires editing `.env` and `docker compose ... up -d` again.
 
 ## Rotating the IPs
 
@@ -86,7 +86,7 @@ With docker compose, put these in `.env` (see `env.example`). With plain `docker
 
 | Variable | Default | Description |
 |---|---|---|
-| `SINGBOX_PORTS` | `1080-1081` | **Primary knob.** Host:container port range of the SOCKS5 exits; the tunnel count is derived from it (`1080-1082` → 3 tunnels on 1080/1081/1082). |
+| `SINGBOX_PORTS` | `1080-1081` | **Primary knob.** Host port range of the SOCKS5 exits (compose uses host network mode, so no port mapping); the tunnel count is derived from it (`1080-1082` → 3 tunnels on 1080/1081/1082). |
 | `SINGBOX_TUNNELS` | `1` | Number of WARP tunnels / SOCKS5 ports. Only used when `SINGBOX_PORTS` is unset (plain `docker run`). |
 | `SINGBOX_SOCKS_PORT` | `1080` | Base SOCKS5 port; tunnels use `1080 .. 1080+N-1`. Only used when `SINGBOX_PORTS` is unset. |
 | `WARP_SLEEP` | `2` | Seconds to wait after startup / reload for the tunnels to handshake. |

@@ -179,9 +179,10 @@ resolve_proxy_host() {
 }
 
 # Tunnel count and base SOCKS port. Preferred: a single XRAY_PORTS range
-# ("1080-1082") used both for the compose port mapping and inside the
-# container, so there is only one value to keep consistent. Fallback for
-# plain `docker run`: the separate XRAY_TUNNELS / XRAY_SOCKS_PORT.
+# ("1080-1082") passed to the container, which listens directly on those
+# host ports (compose runs in host network mode), so there is only one value
+# to keep consistent. Fallback for plain `docker run`: the separate
+# XRAY_TUNNELS / XRAY_SOCKS_PORT.
 if [ -n "${XRAY_PORTS:-}" ]; then
     start="${XRAY_PORTS%%-*}"
     end="${XRAY_PORTS##*-}"
