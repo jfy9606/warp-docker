@@ -18,7 +18,9 @@ RUN set -eux; \
       aarch64|arm64) sbarch=arm64 ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
-    apk add --no-cache bash curl jq ca-certificates; \
+    # musl-utils provides getent, used to resolve the WARP_PROXY hostname
+    # outside the tunnel when the proxy URL contains a domain
+    apk add --no-cache bash curl jq ca-certificates musl-utils; \
     curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SING_BOX_VERSION}/sing-box-${SING_BOX_VERSION}-linux-${sbarch}-musl.tar.gz" \
       -o /tmp/sing-box.tar.gz; \
     tar -xzf /tmp/sing-box.tar.gz -C /usr/local/bin --strip-components=1 \

@@ -19,7 +19,9 @@ RUN set -eux; \
       aarch64|arm64) xarch=arm64-v8a ;; \
       *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
     esac; \
-    apk add --no-cache bash curl jq ca-certificates unzip; \
+    # musl-utils provides getent, used to resolve the WARP_PROXY hostname
+    # outside the tunnel when the proxy URL contains a domain
+    apk add --no-cache bash curl jq ca-certificates musl-utils unzip; \
     curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/v${XRAY_VERSION}/Xray-linux-${xarch}.zip" \
       -o /tmp/xray.zip; \
     unzip -o /tmp/xray.zip -d /usr/local/bin xray; \

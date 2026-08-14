@@ -31,6 +31,9 @@ services:
     environment:
       - SINGBOX_PORTS=${SINGBOX_PORTS:-1080-1081}
       - WARP_SLEEP=${WARP_SLEEP:-2}
+      # chain the WARP tunnels through an upstream SOCKS5 proxy
+      # (WireGuard -> SOCKS5 -> Cloudflare); see docs/singbox-multi-ip.md
+      - WARP_PROXY=${WARP_PROXY:-}
       # optional; WARP+ accounts allow max 5 devices
       - WARP_LICENSE_KEY=${WARP_LICENSE_KEY:-}
       # re-register all tunnels + hot reload; GNU sleep duration (e.g. 6h)

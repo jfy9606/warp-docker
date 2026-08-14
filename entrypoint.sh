@@ -94,5 +94,14 @@ if [ -n "$WARP_IP_ROTATE_INTERVAL" ]; then
     ) &
 fi
 
+# WARP_PROXY is NOT supported by the official WARP client: the tunnel
+# itself (WireGuard/MASQUE) always connects directly, there is no
+# outbound-proxy option. Use the sing-box or xray multi-IP mode
+# (docker-compose.singbox.yml / docker-compose.xray.yml) to chain the WARP
+# tunnels through an upstream SOCKS5 proxy.
+if [ -n "$WARP_PROXY" ]; then
+    echo "[WARN] WARP_PROXY is set but the official WARP client does not support outbound proxies; ignoring it. Use the sing-box or xray multi-IP mode (docker-compose.singbox.yml / docker-compose.xray.yml) for chained WARP tunnels."
+fi
+
 # start the proxy
 gost $GOST_ARGS

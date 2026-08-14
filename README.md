@@ -140,7 +140,7 @@ curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace
 curl --socks5-hostname 127.0.0.1:1081 https://cloudflare.com/cdn-cgi/trace
 ```
 
-`SINGBOX_PORTS` / `XRAY_PORTS` is the single knob per mode controlling the exits: `1080-1081` runs 2 tunnels, `1080-1082` runs 3, etc. See [env.example](env.example) for every option and the mode docs for details and caveats.
+`SINGBOX_PORTS` / `XRAY_PORTS` is the single knob per mode controlling the exits: `1080-1081` runs 2 tunnels, `1080-1082` runs 3, etc. Both modes also accept `WARP_PROXY=socks5://[user:pass@]host:port` to chain the WireGuard tunnels through an upstream SOCKS5 proxy (`WireGuard -> SOCKS5 -> Cloudflare`) — supported by sing-box (endpoint `detour`) and xray (`proxySettings`), **not** by the official client. See [env.example](env.example), [docs/singbox-multi-ip.md](docs/singbox-multi-ip.md) and [docs/xray-multi-ip.md](docs/xray-multi-ip.md) for every option and caveats.
 
 > [!WARNING]
 > Both multi-IP modes are **experimental**: Cloudflare restricts API-registered WireGuard devices, so sessions can degrade or drop within minutes. The official-client mode (main `docker-compose.yml`) is the reliable path for production traffic.

@@ -11,5 +11,5 @@ This directory contains advanced usage and configurations of the project. Below 
 - [proxy-mode.md](proxy-mode.md): instructions on how to use the container in WARP's proxy mode.
 - [ip-rotation.md](ip-rotation.md): how to rotate the WARP IP periodically.
 - [tun-not-permitted.md](tun-not-permitted.md): Explains the error message `{ err: Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" }, context: "open tun" }` and how to resolve it.
-- [singbox-multi-ip.md](singbox-multi-ip.md): how to run N independent WARP tunnels (N egress IPs) in one container with sing-box.
-- [xray-multi-ip.md](xray-multi-ip.md): the same multi-IP setup with Xray-core instead of sing-box.
+- [singbox-multi-ip.md](singbox-multi-ip.md): how to run N independent WARP tunnels (N egress IPs) in one container with sing-box — including chaining them through an upstream SOCKS5 proxy (`WARP_PROXY`).
+- [xray-multi-ip.md](xray-multi-ip.md): the same multi-IP setup with Xray-core instead of sing-box — including chaining them through an upstream SOCKS5 proxy (`WARP_PROXY`).

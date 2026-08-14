@@ -92,10 +92,31 @@ With docker compose, put these in `.env` (see `env.example`). With plain `docker
 | `WARP_SLEEP` | `2` | Seconds to wait after startup / reload for the tunnels to handshake. |
 | `WARP_IP_ROTATE_INTERVAL` | unset | If set, re-register all tunnels periodically and hot-reload. |
 | `WARP_LICENSE_KEY` | unset | Optional WARP+ license, applied to each new registration. |
+| `WARP_PROXY` | unset | Optional `socks5://[user:pass@]host:port` upstream SOCKS5 proxy the WARP tunnels are chained through (`WireGuard -> SOCKS5 -> Cloudflare`). See [Chaining through an upstream SOCKS5 proxy](#chaining-through-an-upstream-socks5-proxy). |
 | `SINGBOX_DATA_DIR` | `./data-singbox` | Host dir mounted at `/var/lib/singbox-warp` (tunnel identities). Compose-only. |
 | `SING_BOX_VERSION` / `SINGBOX_IMAGE` / `SINGBOX_CONTAINER_NAME` / `SINGBOX_RESTART` | … | Compose-only: sing-box release to build, image tag, container name, restart policy. |
 | `DATA_DIR` | `/var/lib/singbox-warp` | Where tunnel identities are persisted inside the container. |
 | `WARP_API_BASE` / `WARP_CLIENT_VERSION` / `WARP_WG_PORT` | … | Advanced: API endpoint, client version header, WireGuard peer port (2408). |
+
+## Chaining through an upstream SOCKS5 proxy
+
+Set `WARP_PROXY` to run the WireGuard tunnels **through** an upstream SOCKS5 proxy instead of connecting to Cloudflare directly — e.g. when your network blocks Cloudflare endpoints but allows the proxy:
+
+```bash
+WARP_PROXY=socks5://user:pass@proxy.example.com:1080
+```
+
+Implementation: each wireguard endpoint gets `"detour": "socks-out"` pointing at a socks outbound, so the tunnel's underlying UDP socket (the WireGuard session to Cloudflare) is dialed through the proxy. All N tunnels share the same upstream proxy; each keeps its own egress IP.
+
+Requirements & behavior:
+
+- **UDP relay**: WireGuard is UDP, so the proxy must support SOCKS5 UDP ASSOCIATE. If the upstream proxy is itself a sing-box/mihomo-compatible SOCKS5 server, append `?udp_over_tcp=true` to tunnel the UDP inside TCP (`socks5://host:1080?udp_over_tcp=true`); plain SOCKS5 proxies ignore that query and must support UDP ASSOCIATE.
+- **Hostname resolution**: a proxy hostname is resolved once at startup and again at each rotation, using the container's DNS — which is outside the tunnel (userspace WireGuard never touches the system route table), so it is never circular. If the hostname cannot be resolved from the container, put an IP in `WARP_PROXY` (`socks5://1.2.3.4:1080`).
+- **Registration through the proxy**: the Cloudflare API calls (registration, WARP+ license binding, rotation/device deletion) also go through the proxy, so the container needs no direct route to `api.cloudflareclient.com` — only the proxy does.
+- **Auth**: `socks5://user:pass@host:port` (user/pass may be percent-encoded). IPv6 proxies are written `socks5://[::1]:1080`.
+- **Client DNS** still resolves through tunnel 0, inside the chain, unchanged.
+
+Verify after startup: `curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace` should report `warp=on` with a WARP egress IP — and the proxy's own access log should show the tunnel traffic arriving via the proxy.
 
 ## How it works
 

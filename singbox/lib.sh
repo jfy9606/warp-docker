@@ -8,6 +8,12 @@
 # implemented natively so that the client_id / reserved bytes are captured
 # (the wgcf binary discards them, but sing-box's wireguard endpoint needs
 # them for new registrations).
+#
+# Optional chaining: set WARP_PROXY=socks5://[user:pass@]host:port to dial
+# the WireGuard tunnels through an upstream SOCKS5 proxy (WireGuard ->
+# SOCKS5 -> Cloudflare). Each wireguard endpoint gets a "detour" to a socks
+# outbound, and every API call (registration, license, rotation) goes
+# through the same proxy.
 
 set -euo pipefail
 
@@ -16,6 +22,153 @@ CF_CLIENT_VERSION="${WARP_CLIENT_VERSION:-a-6.30-3596}"
 DATA_DIR="${DATA_DIR:-/var/lib/singbox-warp}"
 CONFIG_FILE="${SINGBOX_CONFIG_FILE:-/etc/singbox/config.json}"
 WG_PORT="${WARP_WG_PORT:-2408}"
+
+# urldecode <str>: minimal percent-decoding (e.g. for user/pass in the proxy
+# URL). Literal backslashes are escaped first so printf does not mangle them.
+urldecode() {
+    local s="${1//\\/\\\\}"
+    printf '%b' "${s//%/\\x}"
+}
+
+# is_ip <host>: true if <host> looks like an IPv4 or IPv6 address (no DNS
+# resolution needed, no network access).
+is_ip() {
+    local s="$1"
+    if [[ "$s" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        return 0
+    fi
+    if [[ "$s" == *":"* ]] && [[ "$s" =~ ^[0-9a-fA-F:]+$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# parse_proxy_url <url> <mode>: parses a SOCKS5 proxy URL of the form
+#   socks5://[user:pass@]host:port[?udp_over_tcp=true]
+# (socks:// and socks5h:// are accepted as aliases) and sets PROXY_HOST /
+# PROXY_PORT / PROXY_USER / PROXY_PASS / PROXY_HOSTNAME / PROXY_UDP_OVER_TCP /
+# PROXY_URL (the same URL with the query string stripped, for tools like GOST
+# that must not see sing-box-only query parameters). Returns non-zero on
+# malformed input.
+parse_proxy_url() {
+    local url="$1" mode="$2" userinfo rest portnum
+    PROXY_HOST= PROXY_PORT= PROXY_USER= PROXY_PASS= PROXY_HOSTNAME= PROXY_UDP_OVER_TCP=0 PROXY_URL=
+
+    case "$url" in
+        socks5://*|socks://*|socks5h://*) url="${url#*://}" ;;
+        *)
+            echo "[$mode] WARP_PROXY must be a socks5:// URL, e.g. socks5://user:pass@host:1080 (got: '$url')" >&2
+            return 1
+            ;;
+    esac
+
+    # strip the query string (sing-box only options like ?udp_over_tcp=true)
+    if [[ "$url" == *"?"* ]]; then
+        local query="${url##*\?}"
+        url="${url%%\?*}"
+        case ",$query," in
+            *,udp_over_tcp=true,*) PROXY_UDP_OVER_TCP=1 ;;
+        esac
+    fi
+    PROXY_URL="socks5://$url"
+
+    # userinfo
+    if [[ "$url" == *"@"* ]]; then
+        userinfo="${url%%@*}"
+        url="${url#*@}"
+        PROXY_USER="$(urldecode "${userinfo%%:*}")"
+        if [[ "$userinfo" == *":"* ]]; then
+            PROXY_PASS="$(urldecode "${userinfo#*:}")"
+        fi
+    fi
+
+    # host:port (IPv6 must be bracketed: [::1]:1080)
+    if [[ "$url" == \[*\]* ]]; then
+        PROXY_HOST="${url%%]*}"
+        PROXY_HOST="${PROXY_HOST#[}"
+        rest="${url#*]}"
+        PROXY_PORT="${rest#:}"
+    else
+        PROXY_HOST="${url%%:*}"
+        PROXY_PORT="${url#*:}"
+    fi
+
+    if [ -z "$PROXY_HOST" ]; then
+        echo "[$mode] WARP_PROXY is missing the proxy host" >&2
+        return 1
+    fi
+    if [ -z "$PROXY_PORT" ] || ! [[ "$PROXY_PORT" =~ ^[0-9]+$ ]]; then
+        echo "[$mode] WARP_PROXY is missing a numeric port (got: '$PROXY_PORT')" >&2
+        return 1
+    fi
+    portnum=$((10#$PROXY_PORT))
+    if [ "$portnum" -lt 1 ] || [ "$portnum" -gt 65535 ]; then
+        echo "[$mode] WARP_PROXY port out of range: $PROXY_PORT" >&2
+        return 1
+    fi
+    if ! is_ip "$PROXY_HOST"; then
+        # hostname: must be resolved outside the tunnel (see gen_config),
+        # otherwise resolving the proxy through the tunnel is circular
+        PROXY_HOSTNAME="$PROXY_HOST"
+    fi
+}
+
+# ---- optional upstream SOCKS5 proxy (WARP_PROXY) ----
+# Format: socks5://[user:pass@]host:port[?udp_over_tcp=true].
+PROXY_ENABLED=0
+PROXY_HOST=
+PROXY_PORT=
+PROXY_USER=
+PROXY_PASS=
+PROXY_HOSTNAME=
+PROXY_UDP_OVER_TCP=0
+if [ -n "${WARP_PROXY:-}" ]; then
+    if ! parse_proxy_url "$WARP_PROXY" "singbox"; then
+        exit 1
+    fi
+    PROXY_ENABLED=1
+fi
+
+# curl is wrapped so that every Cloudflare API call (registration, license
+# binding, device deletion at rotation) goes through the upstream proxy too -
+# in a network where the proxy is required, the container otherwise could not
+# register at all. CURL_PROXY_ARGS is empty when the proxy is disabled.
+CURL_PROXY_ARGS=()
+if [ "$PROXY_ENABLED" -eq 1 ]; then
+    local_hostport="$PROXY_HOST:$PROXY_PORT"
+    if [[ "$PROXY_HOST" == *":"* ]]; then
+        # IPv6 needs brackets: [::1]:1080
+        local_hostport="[$PROXY_HOST]:$PROXY_PORT"
+    fi
+    CURL_PROXY_ARGS+=(--socks5-hostname "$local_hostport")
+    if [ -n "$PROXY_USER" ]; then
+        CURL_PROXY_ARGS+=(-U "$PROXY_USER:$PROXY_PASS")
+    fi
+fi
+curl() {
+    command curl "${CURL_PROXY_ARGS[@]}" "$@"
+}
+
+# resolve_proxy_host <mode>: resolves PROXY_HOSTNAME (a non-IP proxy host)
+# to an IP using the container's own DNS, which is outside the tunnel
+# (WireGuard runs in userspace, so the system resolver never traverses it).
+# Sets PROXY_HOST to the resolved IP. Prefers IPv4. Called from gen_config,
+# so the hostname is re-resolved on every rotation as well.
+resolve_proxy_host() {
+    local mode="$1" ip=""
+    [ -n "${PROXY_HOSTNAME:-}" ] || return 0
+    if command -v getent >/dev/null 2>&1; then
+        ip=$(getent ahostsv4 "$PROXY_HOSTNAME" 2>/dev/null | awk 'NR==1{print $1; exit}')
+        [ -n "$ip" ] || ip=$(getent ahostsv6 "$PROXY_HOSTNAME" 2>/dev/null | awk 'NR==1{print $1; exit}')
+        [ -n "$ip" ] || ip=$(getent hosts "$PROXY_HOSTNAME" 2>/dev/null | awk 'NR==1{print $1; exit}')
+    fi
+    if [ -z "$ip" ]; then
+        echo "[$mode] WARP_PROXY: cannot resolve proxy hostname '$PROXY_HOSTNAME' (DNS must be reachable from the container, outside the tunnel). Put an IP in WARP_PROXY to skip resolution." >&2
+        return 1
+    fi
+    log "$mode: proxy hostname $PROXY_HOSTNAME resolved to $ip"
+    PROXY_HOST="$ip"
+}
 
 # Tunnel count and base SOCKS port. Preferred: a single SINGBOX_PORTS range
 # ("1080-1082") used both for the compose port mapping and inside the
@@ -169,6 +322,13 @@ register_tunnel() {
 # endpoints, route rules) from all state files. Endpoints are outbounds
 # themselves in sing-box >= 1.11, so route rules reference endpoint tags
 # directly (see adapter/outbound/manager.go in the sing-box source).
+#
+# When WARP_PROXY is set, each wireguard endpoint gets "detour": "socks-out"
+# (the endpoint's underlying UDP socket is dialed through the socks outbound,
+# i.e. WireGuard -> SOCKS5 -> Cloudflare) and a socks outbound is added to
+# the config. The proxy hostname is resolved to an IP here, outside the
+# tunnel, so sing-box never has to resolve the proxy through the tunnel
+# itself (which would be circular).
 gen_config() {
     local files=() i
     for ((i = 0; i < TUNNELS; i++)); do
@@ -180,8 +340,22 @@ gen_config() {
         files+=("$state")
     done
 
-    jq -s --argjson base "$SOCKS_PORT" --argjson wgport "$WG_PORT" '
+    if [ "$PROXY_ENABLED" -eq 1 ]; then
+        if ! resolve_proxy_host "singbox"; then
+            return 1
+        fi
+        log "WARP tunnels will be chained through socks5://$PROXY_HOST:$PROXY_PORT"
+    fi
+
+    jq -s --argjson base "$SOCKS_PORT" --argjson wgport "$WG_PORT" \
+        --argjson proxy "$PROXY_ENABLED" \
+        --arg proxyhost "${PROXY_HOST:-}" \
+        --argjson proxyport "${PROXY_PORT:-0}" \
+        --arg proxyuser "${PROXY_USER:-}" \
+        --arg proxypass "${PROXY_PASS:-}" \
+        --argjson udpOverTcp "$PROXY_UDP_OVER_TCP" '
         to_entries as $all |
+        ($proxy == 1) as $useProxy |
         {
           log: {level: "info"},
           dns: {
@@ -209,7 +383,15 @@ gen_config() {
               allowed_ips: ["0.0.0.0/0", "::/0"],
               reserved: .value.reserved
             }]
-          }],
+          } + (if $useProxy then {detour: "socks-out"} else {} end)],
+          outbounds: (if $useProxy then [
+            ({type: "socks", tag: "socks-out", server: $proxyhost,
+              server_port: $proxyport, version: "5",
+              udp_over_tcp: (if $udpOverTcp == 1 then {} else false end)}
+             + (if $proxyuser != "" then
+                  {username: $proxyuser, password: $proxypass}
+                else {} end))
+          ] else [] end),
           route: {
             default_domain_resolver: {server: "cf"},
             rules: [$all[] | .key as $i | {

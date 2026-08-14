@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
 
-log "sing-box multi-IP mode: tunnels=$TUNNELS, socks base port=$SOCKS_PORT"
+log "sing-box multi-IP mode: tunnels=$TUNNELS, socks base port=$SOCKS_PORT${PROXY_ENABLED:+, WARP_PROXY=$PROXY_HOST:$PROXY_PORT}"
 
 mkdir -p "$DATA_DIR"
 

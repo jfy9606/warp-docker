@@ -109,12 +109,34 @@ With docker compose, put these in `.env` (see `env.example`). With plain `docker
 | `WARP_SLEEP` | `2` | Seconds to wait after startup / restart for the tunnels to handshake. |
 | `WARP_IP_ROTATE_INTERVAL` | unset | If set, re-register all tunnels periodically and restart xray. |
 | `WARP_LICENSE_KEY` | unset | Optional WARP+ license, applied to each new registration. |
+| `WARP_PROXY` | unset | Optional `socks5://[user:pass@]host:port` upstream SOCKS5 proxy the WARP tunnels are chained through (`WireGuard -> SOCKS5 -> Cloudflare`). See [Chaining through an upstream SOCKS5 proxy](#chaining-through-an-upstream-socks5-proxy). |
 | `XRAY_DATA_DIR` | `./data-xray` | Host dir mounted at `/var/lib/xray-warp` (tunnel identities). Compose-only. |
 | `XRAY_VERSION` / `XRAY_IMAGE` / `XRAY_CONTAINER_NAME` / `XRAY_RESTART` | … | Compose-only: xray-core release to build, image tag, container name, restart policy. |
 | `DATA_DIR` | `/var/lib/xray-warp` | Where tunnel identities are persisted inside the container. |
 | `WARP_WG_MTU` | `1280` | WireGuard tunnel MTU (official WARP client default). |
 | `WARP_WG_KEEPALIVE` | `25` | Peer keepalive interval, seconds (official WARP client default). |
 | `WARP_API_BASE` / `WARP_CLIENT_VERSION` / `WARP_WG_PORT` | … | Advanced: API endpoint, client version header, WireGuard peer port (2408). |
+
+## Chaining through an upstream SOCKS5 proxy
+
+Set `WARP_PROXY` to run the WireGuard tunnels **through** an upstream SOCKS5 proxy instead of connecting to Cloudflare directly — e.g. when your network blocks Cloudflare endpoints but allows the proxy:
+
+```bash
+WARP_PROXY=socks5://user:pass@proxy.example.com:1080
+```
+
+Implementation: each wireguard outbound gets `"proxySettings": { "tag": "socks-out" }` and a socks outbound is added to the config. xray's wireguard outbound dials its peer endpoint through the passed dialer (see `proxy/wireguard/bind.go`), so the proxy chain carries the entire WireGuard session to Cloudflare. All N tunnels share the same upstream proxy; each keeps its own egress IP.
+
+Requirements & behavior:
+
+- **The upstream proxy MUST support SOCKS5 UDP ASSOCIATE** — xray has no `udp_over_tcp` equivalent, and WireGuard is UDP end to end. A TCP-only SOCKS5 proxy will never complete a WireGuard handshake.
+- **Keep `XRAY_VERSION` pinned**: the proxy chain is verified against the pinned release 26.3.27. Newer xray-core releases refactored the wireguard outbound (the endpoint is now dialed directly via the system dialer) and may ignore `proxySettings` — do not bump `XRAY_VERSION` blindly if you rely on chaining.
+- **Hostname resolution**: a proxy hostname is resolved once at startup and again at each rotation, using the container's DNS — which is outside the tunnel (userspace gVisor WireGuard never touches the system route table), so it is never circular. If the hostname cannot be resolved from the container, put an IP in `WARP_PROXY` (`socks5://1.2.3.4:1080`).
+- **Registration through the proxy**: the Cloudflare API calls (registration, WARP+ license binding, rotation/device deletion) also go through the proxy, so the container needs no direct route to `api.cloudflareclient.com` — only the proxy does.
+- **Auth**: `socks5://user:pass@host:port` (user/pass may be percent-encoded). IPv6 proxies are written `socks5://[::1]:1080`.
+- **Client DNS** still resolves through tunnel 0, inside the chain, unchanged.
+
+Verify after startup: `curl --socks5-hostname 127.0.0.1:1080 https://cloudflare.com/cdn-cgi/trace` should report `warp=on` with a WARP egress IP — and the proxy's own access log should show the tunnel traffic arriving via the proxy.
 
 ## How it works
 

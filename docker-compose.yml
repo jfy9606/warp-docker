@@ -25,6 +25,11 @@ services:
       # - WARP_LICENSE_KEY= # optional
       # - WARP_ENABLE_NAT=1 # enable nat
       # - WARP_IP_ROTATE_INTERVAL=6h # rotate the WARP IP periodically (GNU sleep duration, e.g. 3600, 30m, 6h)
+      #
+      # WARP_PROXY (chaining the tunnel through an upstream SOCKS5 proxy) is
+      # NOT supported by the official WARP client. Use the sing-box or xray
+      # multi-IP mode (docker-compose.singbox.yml / docker-compose.xray.yml)
+      # instead.
     cap_add:
       # Docker already have them, these are for podman users
       - MKNOD
